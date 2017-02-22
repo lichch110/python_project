@@ -20,10 +20,10 @@ def create_pool(loop, **kw):
     __pool = yield from aiomysql.create_pool(
     host = kw.get('host', 'localhost'),
     port = kw.get('port', 3306),
-    user = kw['user'],
-    password=kw['password'],
-    db = kw['db'],
-    charset=ke.get('charset', 'utf-8'),
+    user = kw['root'],
+    password=kw['123456'],
+    db = kw['abctest'],
+    charset=kw.get('charset', 'utf-8'),
     autocommit=kw.get('autocommit', True),
     maxsize=kw.get('maxsize', 10),
     minsize=kw.get('minsize', 1),
@@ -61,6 +61,15 @@ def execute(sql, args):
         except BaseException as e:
             raise
         return affected
+
+#根据输入的参数生成占位符列表
+def create_args_string(num):
+    L = []
+    for n in range(num):
+        L.append('?')
+    #以','为分隔符，将列表合成字符串
+    return (','.join(L))
+    
 
 #Field类：负责保存表的字段名和字段类型
 class Field(object):
@@ -111,7 +120,7 @@ class ModelMetaclass(type):
         fields = []
         primaryKey = None
         for k, v in attrs.items():
-            if isinstance(v, Field)
+            if isinstance(v, Field):
                 #k是类的一个属性，v是这个属性在数据库中对应的Field列表属性
                 logging.info('  found mapping: %s ==> %s' % (k, v))
                 mappings[k] = v
@@ -267,11 +276,4 @@ if __name__ == '__main__':
         id = IntegerField('id', primary_key=True)
         name = StringField('username')
         email = StringField('email')
-        password = StringField('password')
-    
-#创建一个实例
-u = User(id=12345, name='Lichch', email='wwwwohmay@163.com', password='password')
-print(u)
-#存入数据库
-u.save()
-print(u)
+        password = StringField('password')   
