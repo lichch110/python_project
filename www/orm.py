@@ -20,10 +20,10 @@ def create_pool(loop, **kw):
     __pool = yield from aiomysql.create_pool(
     host = kw.get('host', 'localhost'),
     port = kw.get('port', 3306),
-    user = kw['root'],
-    password=kw['123456'],
-    db = kw['abctest'],
-    charset=kw.get('charset', 'utf-8'),
+    user = kw['user'],
+    password=kw['password'],
+    db = kw['db'],
+    charset=kw.get('charset', 'utf8'),
     autocommit=kw.get('autocommit', True),
     maxsize=kw.get('maxsize', 10),
     minsize=kw.get('minsize', 1),
@@ -143,13 +143,13 @@ class ModelMetaclass(type):
         #保存属性和列的映射关系
         attrs['__mappings__'] = mappings
         attrs['__table__'] = tableName
-        attrs['__primary__'] = primaryKey
+        attrs['__primary_key__'] = primaryKey
         #保存除主键外的属性名
         attrs['__fields__'] = fields
         #构造默认的select、insert、update、delete语句
         #``的作用等同于repr()
         attrs['__select__'] = 'select `%s`, %s from `%s`' % (primaryKey, ','.join(escaped_fields), tableName)
-        attrs['__insert__'] = 'insert inot `%s` (%s, `%s`) value (%s)' % (tableName, ','.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
+        attrs['__insert__'] = 'insert into `%s` (%s, `%s`) value (%s)' % (tableName, ','.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
         attrs['__update__'] = 'update `%s` set %s where `%s`=?' % (tableName, ','.join(map(lambda f: '`%s`=?' % (mappings.get(f).name or f), fields)), primaryKey)
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primaryKey)
         return type.__new__(cls, name, bases, attrs)
@@ -247,7 +247,7 @@ class Model(dict, metaclass=ModelMetaclass):
     def save(self):
         args = list(map(self.getValueOrDefault, self.__fields__))
         args.append(self.getValueOrDefault(self.__primary_key__))
-        row = yield from execute(self.__insert__, args)
+        rows = yield from execute(self.__insert__, args)
         if rows != 1:
             logging.warn('faild to insert record: affected rows: %s' % rows)
 
