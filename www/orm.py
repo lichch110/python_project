@@ -13,11 +13,10 @@ def log(sql, args=()):
 #使用连接池的好处是不必频繁地打开和关闭数据库连接，而是能复用就尽量复用
 
 #连接池由全局变量__pool存储，缺省情况下将编码设置为utf-8，自动提交事务
-@asyncio.coroutine
-def create_pool(loop, **kw):
+async def create_pool(loop, **kw):
     logging.info('create database connection pool...')
     global __pool
-    __pool = yield from aiomysql.create_pool(
+    __pool = await aiomysql.create_pool(
     host = kw.get('host', 'localhost'),
     port = kw.get('port', 3306),
     user = kw['user'],
@@ -32,32 +31,30 @@ def create_pool(loop, **kw):
     )
 
 #封装SQL Select语句为select函数
-@asyncio.coroutine
-def select(sql, args, size=None):
+async def select(sql, args, size=None):
     log(sql, args)
     global __pool
-    with (yield from __pool) as conn:
-        cur = yield from conn.cursor(aiomysql.DictCursor)
-        yield from cur.execute(sql.replace('?', '%s',), args or ())
+    with (await __pool) as conn:
+        cur = await conn.cursor(aiomysql.DictCursor)
+        await cur.execute(sql.replace('?', '%s',), args or ())
         if size:
-            rs = yield from cur.fetchmany(size)
+            rs = await cur.fetchmany(size)
         else:
-            rs = yield from cur.fetchall()
-        yield from cur.close()
+            rs = await cur.fetchall()
+        await cur.close()
         logging.info('rows returned: %s' % len(rs))
         return rs
 
 #封装Insert、Update、Delete
 #定义一个通用execute()函数，返回一个整数表示影响的行数
-@asyncio.coroutine
-def execute(sql, args):
+async def execute(sql, args):
     log(sql)
-    with (yield from __pool) as conn:
+    with (await __pool) as conn:
         try:
-            cur = yield from conn.cursor()
-            yield from cur.execute(sql.replace('?', '%s'), args)
+            cur = await conn.cursor()
+            await cur.execute(sql.replace('?', '%s'), args)
             affected = cur.rowcount
-            yield from cur.close()
+            await cur.close()
         except BaseException as e:
             raise
         return affected
@@ -69,7 +66,7 @@ def create_args_string(num):
         L.append('?')
     #以','为分隔符，将列表合成字符串
     return (','.join(L))
-    
+
 
 #Field类：负责保存表的字段名和字段类型
 class Field(object):
@@ -121,15 +118,12 @@ class ModelMetaclass(type):
         primaryKey = None
         for k, v in attrs.items():
             if isinstance(v, Field):
-                #k是类的一个属性，v是这个属性在数据库中对应的Field列表属性
-                logging.info('  found mapping: %s ==> %s' % (k, v))
+                logging.info('  found mappings: %s ==> %s' % (k, v))
                 mappings[k] = v
                 if v.primary_key:
                     #找到主键
                     if primaryKey:
-                        #如果此时类实例已存在主键，说明主键从复了
                         raise RuntimeError('Duplicate primary key for field: %s' % k)
-                    #否则将此列设为列表的主键
                     primaryKey = k
                 else:
                     fields.append(k)
@@ -188,8 +182,7 @@ class Model(dict, metaclass=ModelMetaclass):
     @classmethod
     #类方法(可以直接通过类而非对象访问的方法)有变量cls传入，从而可以用cls做一些相关处理
     #当有子类继承时，调用该类方法传入的类变量cls是子类，而非父类
-    @asyncio.coroutine
-    def findAll(cls, where=None, args=None, **kw):
+    async def findAll(cls, where=None, args=None, **kw):
         '''find object by where clause.'''
         sql = [cls.__select__]
 
@@ -216,64 +209,47 @@ class Model(dict, metaclass=ModelMetaclass):
                 args.extend(limit)
             else:
                 raise ValueError('Invalid limit value: %s' )
-        rs = yield from select(' '.join(sql), args)
+        rs = await select(' '.join(sql), args)
         return [cls(**r) for r in rs]
 
 
     @classmethod
-    @asyncio.coroutine
-    def findNumber(cls, selectField, where=None, args=None):
+    async def findNumber(cls, selectField, where=None, args=None):
         '''find number by select and where.'''
         sql = ['select %s __num__ from `%s`' % (selectField, cls.__table__)]
         if where:
             sql.append('where')
             sql.append(where)
-        rs = yield from select(' '.join(sql), args, 1)
+        rs = await select(' '.join(sql), args, 1)
         if len(rs) == 0:
             return None
         return rs[0][__num__]
 
     @classmethod
-    @asyncio.coroutine
-    def find(cls, pk):
+    async def find(cls, pk):
         '''find object by primary key.'''
-        rs = yield from select('%s where `%s`=?' % (cls.__select__, cls.__primary_key__), [pk], 1)
+        rs = await select('%s where `%s`=?' % (cls.__select__, cls.__primary_key__), [pk], 1)
         if len(rs) == 0:
             return None
         return cls(**rs[0])
 
     
-    @asyncio.coroutine
-    def save(self):
+    async def save(self):
         args = list(map(self.getValueOrDefault, self.__fields__))
         args.append(self.getValueOrDefault(self.__primary_key__))
-        rows = yield from execute(self.__insert__, args)
+        rows = await execute(self.__insert__, args)
         if rows != 1:
             logging.warn('faild to insert record: affected rows: %s' % rows)
 
-    @asyncio.coroutine
-    def update(self):
+    async def update(self):
         args = list(map(self.getValue, self.__fields__))
         args.append(self.getValue(self.__primary_key__))
-        rows = yield from execute(self.__update__, args)
+        rows = await execute(self.__update__, args)
         if rows != 1:
             logging.warn('faild to update by primary key: affected rows: %s' % rows)
 
-    @asyncio.coroutine
-    def remove(self):
+    async def remove(self):
         args = [self.getValue(self.__primary_key__)]
-        rows = yield from execute(self.__delete__, args)
+        rows = await execute(self.__delete__, args)
         if rows != 1:
             logging.warn('faild to remove by primary key: affected rows: %s' % rows)
-
-
-if __name__ == '__main__':
-
-    class User(Model):
-        #定义类的属性到列的映射
-        __table__ = 'users'
-    
-        id = IntegerField('id', primary_key=True)
-        name = StringField('username')
-        email = StringField('email')
-        password = StringField('password')   
