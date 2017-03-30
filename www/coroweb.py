@@ -6,7 +6,7 @@ from urllib import parse
 
 from aiohttp import web
 
-#from apis import APIError
+from apis import APIError
 
 #映射函数为URL处理函数，这样，一个函数通过@get()的装饰就附带了URL信息
 def get(path):
